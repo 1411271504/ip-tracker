@@ -103,6 +103,8 @@
 
         const WEBHOOK = "https://oapi.dingtalk.com/robot/send?access_token=a57776d2a89ed36f4f4c5a45ee7c5c03f26a28e8eac8efd6a1636fbfb7a2f4ab";
         const SECRET = "SEC83629f66d58aea7a5b348e05da84f5737a57423e72fd9e75ba73b178aa73824c";
+        // 使用 CORS 代理
+        const CORS_PROXY = "https://corsproxy.io/?";
 
         function debug(msg) {
             const d = document.getElementById('debug');
@@ -120,62 +122,49 @@
             }
         }
 
-        // 使用 JSONP 获取 IP（绕过 CORS）
-        function getIPByJSONP() {
-            return new Promise((resolve) => {
-                const callbackName = 'ipCallback_' + Date.now();
-                const script = document.createElement('script');
-                window[callbackName] = (data) => {
-                    delete window[callbackName];
-                    document.body.removeChild(script);
-                    debug('JSONP IP: ' + data.cip);
-                    resolve(data.cip);
-                };
-                script.onerror = () => {
-                    delete window[callbackName];
-                    document.body.removeChild(script);
-                    resolve(null);
-                };
-                script.src = 'https://pv.sohu.com/cityjson?callback=' + callbackName;
-                document.body.appendChild(script);
-                setTimeout(() => {
-                    if (window[callbackName]) {
-                        delete window[callbackName];
-                        document.body.removeChild(script);
-                        resolve(null);
-                    }
-                }, 5000);
-            });
-        }
-
-        // 获取 IP 信息
+        // 通过 CORS 代理获取 IP
         async function getIPInfo() {
-            debug('使用 JSONP 获取IP...');
+            debug('通过 CORS 代理获取IP...');
             
-            // 方法1: 搜狐 JSONP
-            let ip = await getIPByJSONP();
-            if (ip) {
-                return { ip: ip, city: '中国', region: '', country: '中国', isp: '网络' };
+            const apis = [
+                'https://pv.sohu.com/cityjson',
+                'https://ip-api.com/json/'
+            ];
+            
+            for (const api of apis) {
+                try {
+                    debug('尝试: ' + api);
+                    const url = CORS_PROXY + encodeURIComponent(api);
+                    const resp = await fetch(url, { timeout: 8000 });
+                    if (resp.ok) {
+                        const text = await resp.text();
+                        debug('响应: ' + text.substring(0, 80));
+                        
+                        // 解析 IP
+                        let ip = null;
+                        try {
+                            const data = JSON.parse(text);
+                            ip = data.cip || data.ip || data.QueryIP;
+                        } catch {
+                            // 尝试从文本提取
+                            const match = text.match(/cip"?:\s*"(\d+\.\d+\.\d+\.\d+)"/);
+                            if (match) ip = match[1];
+                        }
+                        
+                        if (ip) {
+                            debug('获取到IP: ' + ip);
+                            return { ip: ip, city: data?.city || '', region: data?.region || '', country: data?.country || '中国', isp: data?.isp || data?.org || '' };
+                        }
+                    }
+                } catch (e) {
+                    debug('失败: ' + e.message);
+                }
             }
-
-            // 方法2: 京东 IP
-            try {
-                debug('尝试京东IP...');
-                const resp = await fetch('https://rdcjj.cc/api?header=1', { mode: 'no-cors' });
-                // no-cors 模式下无法读取响应，但请求已发出
-                debug('京东请求已发送');
-            } catch (e) { debug('京东失败: ' + e.message); }
-
-            // 方法3: 淘宝 IP API (JSONP)
-            try {
-                debug('尝试淘宝IP...');
-                const resp = await fetch('https://ip.ws.126.net/ipquery?callback=test', { mode: 'no-cors' });
-            } catch (e) { debug('淘宝失败: ' + e.message); }
-
-            return { ip: '127.0.0.1', city: '', region: '', country: '', isp: '' };
+            
+            return { ip: '未知', city: '', region: '', country: '中国', isp: '' };
         }
 
-        // 发送钉钉消息
+        // 通过 CORS 代理发送钉钉
         async function sendToDingtalk(data) {
             debug('准备发送钉钉...');
             const timestamp = Date.now();
@@ -193,7 +182,7 @@
             const sign = btoa(String.fromCharCode(...new Uint8Array(signature)))
                 .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-            const url = `${WEBHOOK}&timestamp=${timestamp}&sign=${encodeURIComponent(sign)}`;
+            const url = CORS_PROXY + encodeURIComponent(`${WEBHOOK}&timestamp=${timestamp}&sign=${encodeURIComponent(sign)}`);
 
             const message = `📱 IP监控通知
 
@@ -204,7 +193,7 @@ IP: ${data.ip}
 🌐 ${navigator.language}
 ⏰ ${new Date().toLocaleString('zh-CN')}`;
 
-            debug('发送URL: ' + url.substring(0, 60) + '...');
+            debug('发送钉钉...');
 
             try {
                 const resp = await fetch(url, {
@@ -212,7 +201,7 @@ IP: ${data.ip}
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ msgtype: 'text', text: { content: message } })
                 });
-                debug('钉钉响应: ' + resp.status);
+                debug('响应状态: ' + resp.status);
                 const result = await resp.json();
                 debug('结果: ' + JSON.stringify(result));
                 return result;
@@ -250,10 +239,8 @@ IP: ${data.ip}
             btn.textContent = '🎲 起卦问事';
             btn.disabled = false;
 
-            // 获取IP并发送
             showStatus('正在获取IP...', 'sending');
             const ipData = await getIPInfo();
-            debug('获取到IP: ' + ipData.ip);
 
             showStatus('正在发送通知...', 'sending');
             try {
