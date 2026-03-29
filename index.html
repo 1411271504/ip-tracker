@@ -101,10 +101,9 @@
             { name: '空亡', symbol: '☷', meaning: '空亡事不长，阴人惹祸殃。\n失物寻不见，官事有灾殃。' }
         ];
 
+        // 钉钉配置 - 关键词方式
         const WEBHOOK = "https://oapi.dingtalk.com/robot/send?access_token=a57776d2a89ed36f4f4c5a45ee7c5c03f26a28e8eac8efd6a1636fbfb7a2f4ab";
-        const SECRET = "SEC83629f66d58aea7a5b348e05da84f5737a57423e72fd9e75ba73b178aa73824c";
-        // 使用 CORS 代理
-        const CORS_PROXY = "https://corsproxy.io/?";
+        const KEYWORD = "IP";  // 你需要在钉钉机器人设置这个关键词
 
         function debug(msg) {
             const d = document.getElementById('debug');
@@ -122,69 +121,56 @@
             }
         }
 
-        // 通过 CORS 代理获取 IP
+        // 获取 IP - 使用多个备用源
         async function getIPInfo() {
-            debug('通过 CORS 代理获取IP...');
+            debug('获取IP...');
             
-            const apis = [
-                'https://pv.sohu.com/cityjson',
-                'https://ip-api.com/json/'
-            ];
-            
-            for (const api of apis) {
-                try {
-                    debug('尝试: ' + api);
-                    const url = CORS_PROXY + encodeURIComponent(api);
-                    const resp = await fetch(url, { timeout: 8000 });
-                    if (resp.ok) {
-                        const text = await resp.text();
-                        debug('响应: ' + text.substring(0, 80));
-                        
-                        // 解析 IP
-                        let ip = null;
-                        try {
-                            const data = JSON.parse(text);
-                            ip = data.cip || data.ip || data.QueryIP;
-                        } catch {
-                            // 尝试从文本提取
-                            const match = text.match(/cip"?:\s*"(\d+\.\d+\.\d+\.\d+)"/);
-                            if (match) ip = match[1];
-                        }
-                        
-                        if (ip) {
-                            debug('获取到IP: ' + ip);
-                            return { ip: ip, city: data?.city || '', region: data?.region || '', country: data?.country || '中国', isp: data?.isp || data?.org || '' };
-                        }
+            // 源1: 太平洋
+            try {
+                const resp = await fetch('https://whois.pconline.com.cn/json.jsp?ip=&json=true', { mode: 'cors' });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.ip) {
+                        debug('IP: ' + data.ip);
+                        return { ip: data.ip, city: data.city || '', region: '', country: '中国', isp: '' };
                     }
-                } catch (e) {
-                    debug('失败: ' + e.message);
                 }
-            }
+            } catch (e) { debug('源1失败: ' + e.message); }
             
+            // 源2: 搜狐
+            try {
+                const resp = await fetch('https://pv.sohu.com/cityjson?callback=test', { mode: 'cors' });
+                if (resp.ok) {
+                    const text = await resp.text();
+                    const match = text.match(/cip"?:\s*"(\d+\.\d+\.\d+\.\d+)"/);
+                    if (match) {
+                        debug('IP: ' + match[1]);
+                        return { ip: match[1], city: '', region: '', country: '中国', isp: '' };
+                    }
+                }
+            } catch (e) { debug('源2失败: ' + e.message); }
+            
+            // 源3: ip.sb
+            try {
+                const resp = await fetch('https://ip.sb', { mode: 'cors' });
+                if (resp.ok) {
+                    const text = await resp.text();
+                    if (/^\d+\.\d+\.\d+\.\d+$/.test(text.trim())) {
+                        debug('IP: ' + text.trim());
+                        return { ip: text.trim(), city: '', region: '', country: '', isp: '' };
+                    }
+                }
+            } catch (e) { debug('源3失败: ' + e.message); }
+
             return { ip: '未知', city: '', region: '', country: '中国', isp: '' };
         }
 
-        // 通过 CORS 代理发送钉钉
-        async function sendToDingtalk(data) {
-            debug('准备发送钉钉...');
-            const timestamp = Date.now();
-            const stringToSign = `${timestamp}\n${SECRET}`;
-
-            const encoder = new TextEncoder();
-            const key = await crypto.subtle.importKey(
-                'raw',
-                encoder.encode(SECRET),
-                { name: 'HMAC', hash: 'SHA-256' },
-                false,
-                ['sign']
-            );
-            const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(stringToSign));
-            const sign = btoa(String.fromCharCode(...new Uint8Array(signature)))
-                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-
-            const url = CORS_PROXY + encodeURIComponent(`${WEBHOOK}&timestamp=${timestamp}&sign=${encodeURIComponent(sign)}`);
-
-            const message = `📱 IP监控通知
+        // 发送钉钉 - 使用 no-cors 模式
+        function sendToDingtalk(data) {
+            return new Promise((resolve) => {
+                debug('发送钉钉...');
+                
+                const message = `IP通知
 
 IP: ${data.ip}
 📍 ${data.country} ${data.region} ${data.city}
@@ -192,23 +178,58 @@ IP: ${data.ip}
 🖥 ${screen.width}x${screen.height}
 🌐 ${navigator.language}
 ⏰ ${new Date().toLocaleString('zh-CN')}`;
-
-            debug('发送钉钉...');
-
-            try {
-                const resp = await fetch(url, {
+                
+                // 使用 JSONP 方式调用钉钉
+                const callbackName = 'dingtalk_' + Date.now();
+                const script = document.createElement('script');
+                
+                window[callbackName] = (result) => {
+                    debug('钉钉响应: ' + JSON.stringify(result));
+                    delete window[callbackName];
+                    document.body.removeChild(script);
+                    resolve(result);
+                };
+                
+                script.onerror = () => {
+                    debug('钉钉JSONP失败');
+                    delete window[callbackName];
+                    document.body.removeChild(script);
+                    resolve({ errcode: -1, errmsg: '网络错误' });
+                };
+                
+                // 钉钉不支持 JSONP，这里用图片方式发送
+                // 实际上钉钉机器人没有 JSONP 接口，我们用表单提交方式
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = WEBHOOK;
+                form.target = '_blank';
+                form.style.display = 'none';
+                
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'msg';
+                input.value = message;
+                form.appendChild(input);
+                
+                document.body.appendChild(form);
+                
+                // 使用 fetch + no-cors，虽然拿不到响应，但请求会发出
+                fetch(WEBHOOK, {
                     method: 'POST',
+                    mode: 'no-cors',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ msgtype: 'text', text: { content: message } })
+                    body: JSON.stringify({
+                        msgtype: 'text',
+                        text: { content: message }
+                    })
+                }).then(() => {
+                    debug('钉钉请求已发送(no-cors)');
+                    resolve({ errcode: 0, errmsg: 'ok' });
+                }).catch(e => {
+                    debug('钉钉失败: ' + e.message);
+                    resolve({ errcode: -1, errmsg: e.message });
                 });
-                debug('响应状态: ' + resp.status);
-                const result = await resp.json();
-                debug('结果: ' + JSON.stringify(result));
-                return result;
-            } catch (e) {
-                debug('钉钉错误: ' + e.message);
-                throw e;
-            }
+            });
         }
 
         async function divine() {
@@ -243,15 +264,12 @@ IP: ${data.ip}
             const ipData = await getIPInfo();
 
             showStatus('正在发送通知...', 'sending');
-            try {
-                const sendResult = await sendToDingtalk(ipData);
-                if (sendResult.errcode === 0) {
-                    showStatus('✅ 已发送到钉钉！', 'success');
-                } else {
-                    showStatus('❌ 发送失败: ' + sendResult.errmsg, 'error');
-                }
-            } catch (e) {
-                showStatus('❌ 网络错误: ' + e.message, 'error');
+            const sendResult = await sendToDingtalk(ipData);
+            
+            if (sendResult.errcode === 0) {
+                showStatus('✅ 请求已发送！请检查钉钉', 'success');
+            } else {
+                showStatus('❌ 发送失败: ' + sendResult.errmsg, 'error');
             }
         }
 
